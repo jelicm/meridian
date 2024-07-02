@@ -10,6 +10,7 @@ services:
     environment:
       - PULSAR_ADDRESS=${PULSAR_ADDRESS}
       - NEO4J_ADDRESS:${MERIDIAN_NEO4J_ADDRESS}
+      - NEO4J_DB_NAME:${MERIDIAN_NEO4J_DB_NAME}
       - LISTEN_ADDRESS=${MERIDIAN_LISTEN_ADDRESS}
     depends_on:
       - meridian_neo4j
