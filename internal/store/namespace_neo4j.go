@@ -40,6 +40,7 @@ func (n *namespaceNeo4jStore) Add(namespace domain.Namespace, parent *domain.Nam
 		"org_id":          namespace.GetOrgId(),
 		"name":            namespace.GetName(),
 		"profile_version": namespace.GetProfileVersion(),
+		"labels":          namespace.GetLabels(),
 	})
 	if err != nil {
 		tx.Rollback()
@@ -202,7 +203,15 @@ func (n *namespaceNeo4jStore) readNamespaces(res neo4j.Result, id string) ([]dom
 		if !ok {
 			return namespaces, fmt.Errorf(" %s profile_version invalid type", id)
 		}
-		namespace := domain.NewNamespace(orgId, name, profileVersion)
+		labelsAny, found := record.Get("labels")
+		if !found {
+			return namespaces, fmt.Errorf("namespace %s has no labels", id)
+		}
+		labels, ok := labelsAny.(map[string]string)
+		if !ok {
+			return namespaces, fmt.Errorf("namespace %s labels invalid type", id)
+		}
+		namespace := domain.NewNamespace(orgId, name, profileVersion, labels)
 		for _, resourceName := range domain.SupportedResourceQuotas {
 			quotaAny, found := record.Get(resourceName)
 			if found {
@@ -221,7 +230,7 @@ func (n *namespaceNeo4jStore) readNamespaces(res neo4j.Result, id string) ([]dom
 }
 
 const addNamespaceCypher = `
-CREATE (n:Namespace:Entity{id: $id, org_id: $org_id, name: $name, profile_version: $profile_version})
+CREATE (n:Namespace:Entity{id: $id, org_id: $org_id, name: $name, profile_version: $profile_version, labels: $labels})
 `
 
 const connectNamespacesCypher = `

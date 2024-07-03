@@ -29,9 +29,10 @@ type Namespace struct {
 	name           string
 	resourceQuotas ResourceQuotas
 	profileVersion string
+	labels         map[string]string
 }
 
-func NewNamespace(orgId, name, profileVersion string) Namespace {
+func NewNamespace(orgId, name, profileVersion string, labels map[string]string) Namespace {
 	return Namespace{
 		orgId:          orgId,
 		name:           name,
@@ -68,6 +69,10 @@ func (n Namespace) GetProfileVersion() string {
 
 func (n Namespace) GetId() string {
 	return MakeNamespaceId(n.orgId, n.name)
+}
+
+func (n Namespace) GetLabels() map[string]string {
+	return n.labels
 }
 
 func (n Namespace) GetSeccompProfile() SeccompProfile {
