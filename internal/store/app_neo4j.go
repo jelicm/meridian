@@ -93,7 +93,21 @@ func (a *appNeo4jStore) readApps(res neo4j.Result, namespace domain.Namespace) (
 		return apps, err
 	}
 	for _, record := range records {
-		nameAny, found := record.Get("name")
+		log.Println(namespace.GetName())
+		log.Println(record.Keys)
+		log.Println(record.Values...)
+		propertiesAny, found := record.Get("properties")
+		if !found {
+			return apps, fmt.Errorf("app has no properties")
+		}
+		if propertiesAny == nil {
+			continue
+		}
+		properties, ok := propertiesAny.(map[string]any)
+		if !ok {
+			return apps, fmt.Errorf("app has no properties")
+		}
+		nameAny, found := properties["name"]
 		if !found {
 			return apps, fmt.Errorf("app has no name")
 		}
@@ -101,7 +115,7 @@ func (a *appNeo4jStore) readApps(res neo4j.Result, namespace domain.Namespace) (
 		if !ok {
 			return apps, fmt.Errorf("app name invalid type")
 		}
-		profileVersionAny, found := record.Get("profile_version")
+		profileVersionAny, found := properties["profile_version"]
 		if !found {
 			return apps, fmt.Errorf("app has no profile_version")
 		}
@@ -111,7 +125,7 @@ func (a *appNeo4jStore) readApps(res neo4j.Result, namespace domain.Namespace) (
 		}
 		app := domain.NewApp(namespace, name, profileVersion)
 		for _, resourceName := range domain.SupportedResourceQuotas {
-			quotaAny, found := record.Get(resourceName)
+			quotaAny, found := properties[resourceName]
 			if found {
 				if quota, ok := quotaAny.(float64); !ok {
 					log.Printf("invalid quota type for resource name %s: %v\n", resourceName, quotaAny)
@@ -130,16 +144,16 @@ func (a *appNeo4jStore) readApps(res neo4j.Result, namespace domain.Namespace) (
 const addAppCypher = `
 MATCH (n:Namespace{id: $namespace_id})
 CREATE (a:App:Entity{id: $id, name: $name, profile_version: $profile_version})
-CREATE (n)-[:CHILD]->(a)
+CREATE (n)-[:CHILD]->(a);
 `
 
 const removeAppCypher = `
 MATCH (a:App{id: $id})
-DETACH DELETE a
+DETACH DELETE a;
 `
 
 const getChildAppsCypher = `
 MATCH (n:Namespace{id: $id})
 OPTIONAL MATCH (c:App)<-[:CHILD]-(n)
-RETURN properties(c)
+RETURN properties(c) AS properties;
 `

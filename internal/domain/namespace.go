@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"maps"
 	"slices"
 )
@@ -37,6 +38,7 @@ func NewNamespace(orgId, name, profileVersion string, labels map[string]string) 
 		orgId:          orgId,
 		name:           name,
 		profileVersion: profileVersion,
+		labels:         labels,
 		resourceQuotas: make(ResourceQuotas, 0),
 	}
 }
@@ -75,6 +77,14 @@ func (n Namespace) GetLabels() map[string]string {
 	return n.labels
 }
 
+func (n Namespace) GetLabelsJson() string {
+	labels, err := json.Marshal(n.labels)
+	if err != nil {
+		log.Println(err)
+	}
+	return string(labels)
+}
+
 func (n Namespace) GetSeccompProfile() SeccompProfile {
 	return SeccompProfile{
 		Namespace:    n.GetId(),
@@ -100,9 +110,9 @@ func (n *Namespace) MarshalJSON() ([]byte, error) {
 }
 
 type NamespaceTreeNode struct {
-	Namespace Namespace           `json:"namespace"`
+	Namespace *Namespace           `json:"namespace"`
 	Apps      []App               `json:"applications"`
-	Children  []NamespaceTreeNode `json:"child_namespaces"`
+	Children  []*NamespaceTreeNode `json:"child_namespaces"`
 }
 
 type NamespaceTree struct {

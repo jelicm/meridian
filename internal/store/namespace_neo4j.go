@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -40,7 +41,7 @@ func (n *namespaceNeo4jStore) Add(namespace domain.Namespace, parent *domain.Nam
 		"org_id":          namespace.GetOrgId(),
 		"name":            namespace.GetName(),
 		"profile_version": namespace.GetProfileVersion(),
-		"labels":          namespace.GetLabels(),
+		"labels":          namespace.GetLabelsJson(),
 	})
 	if err != nil {
 		tx.Rollback()
@@ -49,8 +50,8 @@ func (n *namespaceNeo4jStore) Add(namespace domain.Namespace, parent *domain.Nam
 
 	if parent != nil {
 		_, err = tx.Run(connectNamespacesCypher, map[string]any{
-			"parent_id": namespace.GetId(),
-			"child_id":  parent.GetId(),
+			"parent_id": parent.GetId(),
+			"child_id":  namespace.GetId(),
 		})
 		if err != nil {
 			tx.Rollback()
@@ -89,7 +90,7 @@ func (n *namespaceNeo4jStore) GetHierarchy(rootId string) (domain.NamespaceTree,
 		tx.Rollback()
 		return domain.NamespaceTree{}, err
 	}
-	rootNode := &domain.NamespaceTreeNode{Namespace: root}
+	rootNode := &domain.NamespaceTreeNode{Namespace: &root}
 	err = n.populateTree(tx, rootNode)
 	if err != nil {
 		tx.Rollback()
@@ -145,7 +146,7 @@ func (n *namespaceNeo4jStore) populateTree(tx neo4j.Transaction, node *domain.Na
 		return err
 	}
 	for _, child := range node.Children {
-		err = n.populateTree(tx, &child)
+		err = n.populateTree(tx, child)
 		if err != nil {
 			return err
 		}
@@ -154,17 +155,17 @@ func (n *namespaceNeo4jStore) populateTree(tx neo4j.Transaction, node *domain.Na
 }
 
 func (n *namespaceNeo4jStore) populateTreeNode(tx neo4j.Transaction, node *domain.NamespaceTreeNode) error {
-	apps, err := n.apps.FindChildren(node.Namespace)
+	apps, err := n.apps.FindChildren(*node.Namespace)
 	if err != nil {
 		return err
 	}
 	node.Apps = apps
-	children, err := n.getChildren(tx, node.Namespace)
+	children, err := n.getChildren(tx, *node.Namespace)
 	if err != nil {
 		return err
 	}
 	for _, child := range children {
-		node.Children = append(node.Children, domain.NamespaceTreeNode{Namespace: child})
+		node.Children = append(node.Children, &domain.NamespaceTreeNode{Namespace: &child})
 	}
 	return nil
 }
@@ -179,7 +180,18 @@ func (n *namespaceNeo4jStore) readNamespaces(res neo4j.Result, id string) ([]dom
 		return namespaces, err
 	}
 	for _, record := range records {
-		orgIdAny, found := record.Get("org_id")
+		propertiesAny, found := record.Get("properties")
+		if !found {
+			return namespaces, fmt.Errorf("namespace %s has no properties", id)
+		}
+		if propertiesAny == nil {
+			continue
+		}
+		properties, ok := propertiesAny.(map[string]any)
+		if !ok {
+			return namespaces, fmt.Errorf("namespace %s has no properties", id)
+		}
+		orgIdAny, found := properties["org_id"]
 		if !found {
 			return namespaces, fmt.Errorf("namespace %s has no org_id", id)
 		}
@@ -187,7 +199,7 @@ func (n *namespaceNeo4jStore) readNamespaces(res neo4j.Result, id string) ([]dom
 		if !ok {
 			return namespaces, fmt.Errorf("namespace %s org_id invalid type", id)
 		}
-		nameAny, found := record.Get("name")
+		nameAny, found := properties["name"]
 		if !found {
 			return namespaces, fmt.Errorf("namespace %s has no name", id)
 		}
@@ -195,7 +207,7 @@ func (n *namespaceNeo4jStore) readNamespaces(res neo4j.Result, id string) ([]dom
 		if !ok {
 			return namespaces, fmt.Errorf("namespace %s name invalid type", id)
 		}
-		profileVersionAny, found := record.Get("profile_version")
+		profileVersionAny, found := properties["profile_version"]
 		if !found {
 			return namespaces, fmt.Errorf("namespace %s has no profile_version", id)
 		}
@@ -203,17 +215,22 @@ func (n *namespaceNeo4jStore) readNamespaces(res neo4j.Result, id string) ([]dom
 		if !ok {
 			return namespaces, fmt.Errorf(" %s profile_version invalid type", id)
 		}
-		labelsAny, found := record.Get("labels")
+		labelsAny, found := properties["labels"]
 		if !found {
 			return namespaces, fmt.Errorf("namespace %s has no labels", id)
 		}
-		labels, ok := labelsAny.(map[string]string)
+		labelsJson, ok := labelsAny.(string)
 		if !ok {
 			return namespaces, fmt.Errorf("namespace %s labels invalid type", id)
 		}
+		labels := make(map[string]string)
+		err = json.Unmarshal([]byte(labelsJson), &labels)
+		if err != nil {
+			return namespaces, nil
+		}
 		namespace := domain.NewNamespace(orgId, name, profileVersion, labels)
 		for _, resourceName := range domain.SupportedResourceQuotas {
-			quotaAny, found := record.Get(resourceName)
+			quotaAny, found := properties[resourceName]
 			if found {
 				if quota, ok := quotaAny.(float64); !ok {
 					log.Printf("invalid quota type for resource name %s: %v\n", resourceName, quotaAny)
@@ -230,27 +247,27 @@ func (n *namespaceNeo4jStore) readNamespaces(res neo4j.Result, id string) ([]dom
 }
 
 const addNamespaceCypher = `
-CREATE (n:Namespace:Entity{id: $id, org_id: $org_id, name: $name, profile_version: $profile_version, labels: $labels})
+CREATE (n:Namespace:Entity{id: $id, org_id: $org_id, name: $name, profile_version: $profile_version, labels: $labels});
 `
 
 const connectNamespacesCypher = `
 MATCH (p:Namespace{id: $parent_id})
 MATCH (c:Namespace{id: $child_id})
-CREATE (p)-[:CHILD]->(c)
+CREATE (p)-[:CHILD]->(c);
 `
 
 const removeNamespaceCypher = `
 MATCH (n:Namespace{id: $id})
-DETACH DELETE n
+DETACH DELETE n;
 `
 
 const getNamespaceCypher = `
 MATCH (n:Namespace{id: $id})
-RETURN properties(n)
+RETURN properties(n) AS properties;
 `
 
 const getChildNamespacesCypher = `
 MATCH (n:Namespace{id: $id})
 OPTIONAL MATCH (c:Namespace)<-[:CHILD]-(n)
-RETURN properties(c)
+RETURN properties(c) AS properties;
 `

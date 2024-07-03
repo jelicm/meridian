@@ -120,19 +120,19 @@ func (n *resourceQuotaNeo4jStore) getAvailableResources(tx neo4j.Transaction, en
 		availableAny := records[0].Values[0]
 		available, ok := availableAny.(float64)
 		if !ok {
-			return nil, fmt.Errorf("available resources for %s cannot be converted to float: %v", resourceName, availableAny)
+			log.Printf("available resources for %s cannot be converted to float: %v", resourceName, availableAny)
+		} else {
+			quotas[resourceName] = available
 		}
-		quotas[resourceName] = available
 	}
 	return quotas, nil
 }
 
 func (n *resourceQuotaNeo4jStore) setResourceQuotas(tx neo4j.Transaction, entityId string, quotas domain.ResourceQuotas) error {
 	for resource, quota := range quotas {
-		_, err := tx.Run(setResourceQuotaCypher, map[string]any{
-			"id":            entityId,
-			"resource_name": resource,
-			"quota":         quota,
+		_, err := tx.Run(setQuotaCypher(resource), map[string]any{
+			"id":    entityId,
+			"quota": quota,
 		})
 		if err != nil {
 			return err
@@ -153,7 +153,15 @@ func (n *resourceQuotaNeo4jStore) readEntityId(res neo4j.Result) (string, error)
 		return "", fmt.Errorf("entity not found")
 	}
 	record := records[0]
-	idAny, found := record.Get("id")
+	propertiesAny, found := record.Get("properties")
+	if !found {
+		return "", fmt.Errorf("entity has no properties")
+	}
+	properties, ok := propertiesAny.(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("entity has no properties")
+	}
+	idAny, found := properties["id"]
 	if !found {
 		return "", fmt.Errorf("id not found")
 	}
@@ -176,9 +184,17 @@ func (n *resourceQuotaNeo4jStore) readQuotas(res neo4j.Result) (domain.ResourceQ
 		return nil, fmt.Errorf("entity not found")
 	}
 	record := records[0]
+	propertiesAny, found := record.Get("properties")
+	if !found {
+		return nil, fmt.Errorf("entity has no properties")
+	}
+	properties, ok := propertiesAny.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("entity has no properties")
+	}
 	quotas := make(domain.ResourceQuotas)
 	for _, resourceName := range domain.SupportedResourceQuotas {
-		quotaAny, found := record.Get(resourceName)
+		quotaAny, found := properties[resourceName]
 		if found {
 			if quota, ok := quotaAny.(float64); !ok {
 				log.Printf("invalid quota type for resource name %s: %v\n", resourceName, quotaAny)
@@ -193,12 +209,12 @@ func (n *resourceQuotaNeo4jStore) readQuotas(res neo4j.Result) (domain.ResourceQ
 const getParentEntityCypher = `
 MATCH (e:Entity{id: $id})
 OPTIONAL MATCH (p:Entity)-[:CHILD]->(e)
-RETURN properties(p)
+RETURN properties(p) AS properties;
 `
 
 const getEntityCypher = `
 MATCH (e:Entity{id: $id})
-RETURN properties(e)
+RETURN properties(e) AS properties;
 `
 
 const getAvailableResourcesCypher = `
@@ -207,10 +223,9 @@ OPTIONAL MATCH (d:Entity)<-[:CHILD*]-(n)
 WITH n, collect(d[$resource_name]) as utilized_list
 WITH reduce(total_utilized = 0, utilized in utilized_list | total_utilized + utilized) AS total_utilized,
 	 n[$resource_name] AS total
-RETURN total - total_utilized AS available
+RETURN total - total_utilized AS available;
 `
 
-const setResourceQuotaCypher = `
-MATCH (e:Entity{id: $id})
-SET e[$resource_name] = $quota
-`
+func setQuotaCypher(resource string) string {
+	return fmt.Sprintf("MATCH (e:Entity{id: $id})SET e.%s = $quota;", resource)
+}
