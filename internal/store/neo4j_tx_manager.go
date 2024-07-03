@@ -6,114 +6,13 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 )
 
-type TxManager struct {
-	driver neo4j.Driver
-	dbName string
+func startSession(driver neo4j.Driver, dbName string) neo4j.Session {
+	return driver.NewSession(neo4j.SessionConfig{DatabaseName: dbName, AccessMode: neo4j.AccessModeWrite})
 }
 
-func NewTxManager(uri, dbName string) (*TxManager, error) {
-	driver, err := neo4j.NewDriver(uri, neo4j.NoAuth())
+func endSession(session neo4j.Session) {
+	err := session.Close()
 	if err != nil {
-		return nil, err
-	}
-	return &TxManager{
-		driver: driver,
-		dbName: dbName,
-	}, nil
-}
-
-type txFunction func(transaction neo4j.Transaction) (interface{}, error)
-
-func (manager *TxManager) WriteTransaction(cypher string, params map[string]interface{}) error {
-	_, err := manager.writeTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
-		result, err := transaction.Run(cypher, params)
-		if err != nil {
-			_ = transaction.Rollback()
-		}
-		if result == nil {
-			return nil, nil
-		}
-		return nil, result.Err()
-	})
-	return err
-}
-
-func (manager *TxManager) WriteTransactions(cyphers []string, params []map[string]interface{}) error {
-	_, err := manager.writeTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
-		var txErr error = nil
-		for i := range cyphers {
-			cypher := cyphers[i]
-			param := params[i]
-			result, err := transaction.Run(cypher, param)
-			if err != nil || result.Err() != nil {
-				_ = transaction.Rollback()
-				if err != nil {
-					txErr = err
-				} else {
-					txErr = result.Err()
-				}
-				break
-			}
-		}
-		return txErr, nil
-	})
-	return err
-}
-
-func (manager *TxManager) ReadTransaction(cypher string, params map[string]interface{}) (interface{}, error) {
-	return manager.readTransaction(func(transaction neo4j.Transaction) (interface{}, error) {
-		result, err := transaction.Run(cypher, params)
-		if err != nil {
-			return nil, err
-		}
-		if result.Err() != nil {
-			return nil, result.Err()
-		}
-		return result.Collect()
-	})
-}
-
-func (manager *TxManager) writeTransaction(txFunc txFunction) (interface{}, error) {
-	session := manager.driver.NewSession(neo4j.SessionConfig{
-		AccessMode:   neo4j.AccessModeWrite,
-		DatabaseName: manager.dbName})
-	defer func(session neo4j.Session) {
-		err := session.Close()
-		if err != nil {
-			log.Println(err)
-		}
-	}(session)
-
-	result, err := session.WriteTransaction(neo4j.TransactionWork(txFunc))
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func (manager *TxManager) readTransaction(txFunc txFunction) (interface{}, error) {
-	session := manager.driver.NewSession(neo4j.SessionConfig{
-		AccessMode:   neo4j.AccessModeRead,
-		DatabaseName: manager.dbName})
-	defer func(session neo4j.Session) {
-		err := session.Close()
-		if err != nil {
-			log.Println(err)
-		}
-	}(session)
-
-	result, err := session.ReadTransaction(neo4j.TransactionWork(txFunc))
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func (manager *TxManager) Stop() {
-	err := manager.driver.Close()
-	if err != nil {
-		log.Println("error while closing neo4j conn: ", err)
+		log.Println(err)
 	}
 }

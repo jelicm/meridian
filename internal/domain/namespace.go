@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 )
 
@@ -9,15 +11,6 @@ const (
 	SECCOMP_APP_WILDCARD = "*"
 	SECCOMP_DEFAULT_ARCH = "x86"
 )
-
-var (
-	supportedResourceQuotas = []string{"mem", "cpu", "disk"}
-)
-
-type ResourceQuota struct {
-	ResourceName string
-	Quota        float64
-}
 
 type SeccompProfile struct {
 	Namespace    string
@@ -31,15 +24,20 @@ func MakeNamespaceId(orgId, namespaceName string) string {
 	return fmt.Sprintf("%s/%s", orgId, namespaceName)
 }
 
-func MakeAppId(orgId, namespaceName, appName string) string {
-	return fmt.Sprintf("%s/%s", MakeNamespaceId(orgId, namespaceName), appName)
-}
-
 type Namespace struct {
 	orgId          string
 	name           string
-	resourceQuotas []ResourceQuota
+	resourceQuotas ResourceQuotas
 	profileVersion string
+}
+
+func NewNamespace(orgId, name, profileVersion string) Namespace {
+	return Namespace{
+		orgId:          orgId,
+		name:           name,
+		profileVersion: profileVersion,
+		resourceQuotas: make(ResourceQuotas, 0),
+	}
 }
 
 func (n Namespace) GetOrgId() string {
@@ -50,17 +48,17 @@ func (n Namespace) GetName() string {
 	return n.name
 }
 
-func (n Namespace) GetResourceQuotas() []ResourceQuota {
-	quotas := make([]ResourceQuota, len(n.resourceQuotas))
-	copy(quotas, n.resourceQuotas)
+func (n Namespace) GetResourceQuotas() ResourceQuotas {
+	quotas := make(ResourceQuotas)
+	maps.Copy(quotas, n.resourceQuotas)
 	return quotas
 }
 
-func (n *Namespace) AddResourceQuota(quota ResourceQuota) error {
-	if !slices.Contains(supportedResourceQuotas, quota.ResourceName) {
-		return fmt.Errorf("quotas for a resource with name %s are not supported", quota.ResourceName)
+func (n *Namespace) AddResourceQuota(resource string, quota float64) error {
+	if !slices.Contains(SupportedResourceQuotas, resource) {
+		return fmt.Errorf("quotas for a resource with name %s are not supported", resource)
 	}
-	n.resourceQuotas = append(n.resourceQuotas, quota)
+	n.resourceQuotas[resource] = quota
 	return nil
 }
 
@@ -82,56 +80,33 @@ func (n Namespace) GetSeccompProfile() SeccompProfile {
 	}
 }
 
+func (n *Namespace) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		OrgId          string         `json:"org_id"`
+		Name           string         `json:"name"`
+		SeccompProfile SeccompProfile `json:"seccomp_profile"`
+		ResourceQuotas ResourceQuotas `json:"resource_quotas"`
+	}{
+		OrgId:          n.orgId,
+		Name:           n.name,
+		SeccompProfile: n.GetSeccompProfile(),
+		ResourceQuotas: n.resourceQuotas,
+	})
+}
+
 type NamespaceTreeNode struct {
-	Namespace Namespace
-	Children  []Namespace
+	Namespace Namespace           `json:"namespace"`
+	Apps      []App               `json:"applications"`
+	Children  []NamespaceTreeNode `json:"child_namespaces"`
 }
 
 type NamespaceTree struct {
-	Root *NamespaceTreeNode
-}
-
-type App struct {
-	namespace      Namespace
-	name           string
-	resourceQuotas []ResourceQuota
-}
-
-func (a App) GetNamespace() Namespace {
-	return a.namespace
-}
-
-func (a App) GetName() string {
-	return a.name
-}
-
-func (a App) GetId() string {
-	return MakeAppId(a.namespace.orgId, a.namespace.name, a.name)
-}
-
-func (a App) GetResourceQuotas() []ResourceQuota {
-	quotas := make([]ResourceQuota, len(a.resourceQuotas))
-	copy(quotas, a.resourceQuotas)
-	return quotas
-}
-
-func (a *App) AddResourceQuota(quota ResourceQuota) error {
-	if !slices.Contains(supportedResourceQuotas, quota.ResourceName) {
-		return fmt.Errorf("quotas for a resource with name %s are not supported", quota.ResourceName)
-	}
-	a.resourceQuotas = append(a.resourceQuotas, quota)
-	return nil
+	Root NamespaceTreeNode
 }
 
 type NamespaceStore interface {
-	Add(namespace, parent Namespace) error
+	Add(namespace Namespace, parent *Namespace) error
 	Get(id string) (Namespace, error)
 	GetHierarchy(rootId string) (NamespaceTree, error)
-	Remove(id string) error
-}
-
-type AppStore interface {
-	Add(app App) error
-	FindByNamespace(namespaceId string) ([]App, error)
 	Remove(id string) error
 }

@@ -1,35 +1,145 @@
 package store
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/c12s/meridian/internal/domain"
+	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 )
 
 type appNeo4jStore struct {
-	txManager *TxManager
+	driver neo4j.Driver
+	dbName string
+	quotas domain.ResourceQuotaStore
 }
 
-func NewAppNeo4jStore(txManager *TxManager) domain.AppStore {
-	if txManager == nil {
-		log.Fatalln("tx manager while initializing app neo4j store")
+func NewAppNeo4jStore(driver neo4j.Driver, dbName string, quotas domain.ResourceQuotaStore) domain.AppStore {
+	if driver == nil {
+		log.Fatalln("driver while initializing app neo4j store")
 	}
 	return &appNeo4jStore{
-		txManager: txManager,
+		driver: driver,
+		dbName: dbName,
+		quotas: quotas,
 	}
 }
 
-// Add implements domain.AppStore.
 func (a *appNeo4jStore) Add(app domain.App) error {
-	panic("unimplemented")
+	session := startSession(a.driver, a.dbName)
+	defer endSession(session)
+	tx, err := session.BeginTransaction()
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Run(addAppCypher, map[string]any{
+		"id":              app.GetId(),
+		"name":            app.GetName(),
+		"profile_version": app.GetProfileVersion(),
+		"namespace_id":    app.GetNamespace().GetId(),
+	})
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	err = a.quotas.SetResourceQuotas(app.GetId(), app.GetResourceQuotas(), tx)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	tx.Commit()
+	return nil
 }
 
-// FindByNamespace implements domain.AppStore.
-func (a *appNeo4jStore) FindByNamespace(namespaceId string) ([]domain.App, error) {
-	panic("unimplemented")
+func (a *appNeo4jStore) FindChildren(namespace domain.Namespace) ([]domain.App, error) {
+	session := startSession(a.driver, a.dbName)
+	defer endSession(session)
+	tx, err := session.BeginTransaction()
+	if err != nil {
+		return nil, err
+	}
+	res, err := tx.Run(getChildAppsCypher, map[string]any{
+		"id": namespace.GetId(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return a.readApps(res, namespace)
 }
 
-// Remove implements domain.AppStore.
 func (a *appNeo4jStore) Remove(id string) error {
-	panic("unimplemented")
+	session := startSession(a.driver, a.dbName)
+	defer endSession(session)
+	tx, err := session.BeginTransaction()
+	if err != nil {
+		return err
+	}
+	_, err = tx.Run(removeAppCypher, map[string]any{
+		"id": id,
+	})
+	return err
 }
+
+func (a *appNeo4jStore) readApps(res neo4j.Result, namespace domain.Namespace) ([]domain.App, error) {
+	apps := make([]domain.App, 0)
+	if res.Err() != nil {
+		return apps, res.Err()
+	}
+	records, err := res.Collect()
+	if err != nil {
+		return apps, err
+	}
+	for _, record := range records {
+		nameAny, found := record.Get("name")
+		if !found {
+			return apps, fmt.Errorf("app has no name")
+		}
+		name, ok := nameAny.(string)
+		if !ok {
+			return apps, fmt.Errorf("app name invalid type")
+		}
+		profileVersionAny, found := record.Get("profile_version")
+		if !found {
+			return apps, fmt.Errorf("app has no profile_version")
+		}
+		profileVersion, ok := profileVersionAny.(string)
+		if !ok {
+			return apps, fmt.Errorf("app profile_version invalid type")
+		}
+		app := domain.NewApp(namespace, name, profileVersion)
+		for _, resourceName := range domain.SupportedResourceQuotas {
+			quotaAny, found := record.Get(resourceName)
+			if found {
+				if quota, ok := quotaAny.(float64); !ok {
+					log.Printf("invalid quota type for resource name %s: %v\n", resourceName, quotaAny)
+				} else {
+					if err := app.AddResourceQuota(resourceName, quota); err != nil {
+						log.Println(err)
+					}
+				}
+			}
+		}
+		apps = append(apps, app)
+	}
+	return apps, nil
+}
+
+const addAppCypher = `
+MATCH (n:Namespace{id: $namespace_id})
+CREATE (a:App:Entity{id: $id, name: $name, profile_version: $profile_version})
+CREATE (n)-[:CHILD]->(a)
+`
+
+const removeAppCypher = `
+MATCH (a:App{id: $id})
+DETACH DELETE a
+`
+
+const getChildAppsCypher = `
+MATCH (n:Namespace{id: $id})
+OPTIONAL MATCH (c:App)<-[:CHILD]-(n)
+RETURN properties(c)
+`
