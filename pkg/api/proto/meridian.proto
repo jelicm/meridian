@@ -20,8 +20,9 @@ message AddNamespaceReq {
     string name = 2;
     map<string, string> labels = 3;
     map<string, double> quotas = 4;
-    SeccompProfile profile = 5;
-    string parentName = 6;
+    string seccompDefinitionStrategy = 5;
+    SeccompProfile profile = 6;
+    string parentName = 7;
 }
 
 message AddNamespaceResp {}
@@ -39,6 +40,7 @@ message AddAppReq {
     string name = 3;
     map<string, double> quotas = 4;
     SeccompProfile profile = 5;
+    string seccompDefinitionStrategy = 6;
 }
 
 message AddAppResp {}

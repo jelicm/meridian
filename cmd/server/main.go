@@ -11,8 +11,10 @@ import (
 	"github.com/c12s/meridian/internal/handlers"
 	"github.com/c12s/meridian/internal/store"
 	"github.com/c12s/meridian/pkg/api"
+	pulsar_api "github.com/c12s/pulsar/model/protobuf"
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -27,7 +29,13 @@ func main() {
 	quotas := store.NewResourceQuotaNeo4jStore(driver, dbName)
 	apps := store.NewAppNeo4jStore(driver, dbName, quotas)
 	namespaces := store.NewNamespaceNeo4jStore(driver, dbName, quotas, apps)
-	meridian := handlers.NewMeridianGrpcHandler(namespaces, apps)
+	conn, err := grpc.NewClient(os.Getenv("PULSAR_ADDRESS"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+	pulsar := pulsar_api.NewSeccompServiceClient(conn)
+	meridian := handlers.NewMeridianGrpcHandler(namespaces, apps, pulsar)
 
 	s := grpc.NewServer()
 	api.RegisterMeridianServer(s, meridian)
