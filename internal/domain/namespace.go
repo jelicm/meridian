@@ -97,21 +97,23 @@ func (n Namespace) GetSeccompProfile() SeccompProfile {
 
 func (n *Namespace) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		OrgId          string         `json:"org_id"`
-		Name           string         `json:"name"`
-		SeccompProfile SeccompProfile `json:"seccomp_profile"`
-		ResourceQuotas ResourceQuotas `json:"resource_quotas"`
+		OrgId          string            `json:"org_id"`
+		Name           string            `json:"name"`
+		SeccompProfile SeccompProfile    `json:"seccomp_profile"`
+		ResourceQuotas ResourceQuotas    `json:"resource_quotas"`
+		Labels         map[string]string `json:"labels"`
 	}{
 		OrgId:          n.orgId,
 		Name:           n.name,
 		SeccompProfile: n.GetSeccompProfile(),
 		ResourceQuotas: n.resourceQuotas,
+		Labels:         n.labels,
 	})
 }
 
 type NamespaceTreeNode struct {
 	Namespace *Namespace           `json:"namespace"`
-	Apps      []App               `json:"applications"`
+	Apps      []App                `json:"applications"`
 	Children  []*NamespaceTreeNode `json:"child_namespaces"`
 }
 
