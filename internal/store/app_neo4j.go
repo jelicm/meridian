@@ -93,9 +93,6 @@ func (a *appNeo4jStore) readApps(res neo4j.Result, namespace domain.Namespace) (
 		return apps, err
 	}
 	for _, record := range records {
-		log.Println(namespace.GetName())
-		log.Println(record.Keys)
-		log.Println(record.Values...)
 		propertiesAny, found := record.Get("properties")
 		if !found {
 			return apps, fmt.Errorf("app has no properties")

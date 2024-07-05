@@ -21,6 +21,7 @@ message AddNamespaceReq {
     map<string, string> labels = 3;
     map<string, double> quotas = 4;
     SeccompProfile profile = 5;
+    string parentName = 6;
 }
 
 message AddNamespaceResp {}
@@ -84,5 +85,5 @@ message GetNamespaceHierarchyResp {
     }
     Namespace namespace = 1;
     repeated App apps = 2;
-    repeated GetNamespaceHierarchyReq namespaces = 3;
+    repeated GetNamespaceHierarchyResp namespaces = 3;
 }
