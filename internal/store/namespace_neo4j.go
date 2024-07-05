@@ -75,6 +75,7 @@ func (n *namespaceNeo4jStore) Get(id string) (domain.Namespace, error) {
 	if err != nil {
 		return domain.Namespace{}, err
 	}
+	defer tx.Commit()
 	return n.get(tx, id)
 }
 
@@ -85,6 +86,7 @@ func (n *namespaceNeo4jStore) GetHierarchy(rootId string) (domain.NamespaceTree,
 	if err != nil {
 		return domain.NamespaceTree{}, err
 	}
+	defer tx.Commit()
 	root, err := n.get(tx, rootId)
 	if err != nil {
 		tx.Rollback()
@@ -109,7 +111,12 @@ func (n *namespaceNeo4jStore) Remove(id string) error {
 	_, err = tx.Run(removeNamespaceCypher, map[string]any{
 		"id": id,
 	})
-	return err
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	tx.Commit()
+	return nil
 }
 
 func (n *namespaceNeo4jStore) get(tx neo4j.Transaction, id string) (domain.Namespace, error) {

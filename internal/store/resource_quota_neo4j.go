@@ -219,7 +219,7 @@ RETURN properties(e) AS properties;
 
 const getAvailableResourcesCypher = `
 MATCH (n:Entity{id: $id})
-OPTIONAL MATCH (d:Entity)<-[:CHILD*]-(n)
+OPTIONAL MATCH (d:Entity)<-[:CHILD]-(n)
 WITH n, collect(d[$resource_name]) as utilized_list
 WITH reduce(total_utilized = 0, utilized in utilized_list | total_utilized + utilized) AS total_utilized,
 	 n[$resource_name] AS total

@@ -60,6 +60,7 @@ func (a *appNeo4jStore) FindChildren(namespace domain.Namespace) ([]domain.App, 
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Commit()
 	res, err := tx.Run(getChildAppsCypher, map[string]any{
 		"id": namespace.GetId(),
 	})
@@ -80,7 +81,12 @@ func (a *appNeo4jStore) Remove(id string) error {
 	_, err = tx.Run(removeAppCypher, map[string]any{
 		"id": id,
 	})
-	return err
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	tx.Commit()
+	return nil
 }
 
 func (a *appNeo4jStore) readApps(res neo4j.Result, namespace domain.Namespace) ([]domain.App, error) {

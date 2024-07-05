@@ -24,6 +24,11 @@ func NewMeridianGrpcHandler(namespaces domain.NamespaceStore, apps domain.AppSto
 }
 
 func (m MeridianGrpcHandler) AddNamespace(ctx context.Context, req *api.AddNamespaceReq) (*api.AddNamespaceResp, error) {
+	namespace, err := m.namespaces.Get(domain.MakeNamespaceId(req.OrgId, req.Name))
+	if err == nil {
+		err = status.Error(codes.AlreadyExists, "namespace already exists")
+		return nil, err
+	}
 	var parent *domain.Namespace
 	if req.ParentName != "" {
 		p, err := m.namespaces.Get(domain.MakeNamespaceId(req.OrgId, req.ParentName))
@@ -34,7 +39,7 @@ func (m MeridianGrpcHandler) AddNamespace(ctx context.Context, req *api.AddNames
 		}
 		parent = &p
 	}
-	namespace := domain.NewNamespace(req.OrgId, req.Name, req.Profile.Version, req.Labels)
+	namespace = domain.NewNamespace(req.OrgId, req.Name, req.Profile.Version, req.Labels)
 	for resource, quota := range req.Quotas {
 		err := namespace.AddResourceQuota(resource, quota)
 		if err != nil {
@@ -44,7 +49,7 @@ func (m MeridianGrpcHandler) AddNamespace(ctx context.Context, req *api.AddNames
 		}
 	}
 	// todo: send seccomp profile
-	err := m.namespaces.Add(namespace, parent)
+	err = m.namespaces.Add(namespace, parent)
 	if err != nil {
 		log.Println(err)
 		err = status.Error(codes.Internal, err.Error())
@@ -54,7 +59,12 @@ func (m MeridianGrpcHandler) AddNamespace(ctx context.Context, req *api.AddNames
 }
 
 func (m MeridianGrpcHandler) RemoveNamespace(ctx context.Context, req *api.RemoveNamespaceReq) (*api.RemoveNamespaceResp, error) {
-	err := m.namespaces.Remove(domain.MakeNamespaceId(req.OrgId, req.Name))
+	tree, err := m.namespaces.GetHierarchy(domain.MakeNamespaceId(req.OrgId, req.Name))
+	if err == nil && (len(tree.Root.Children) > 0 || len(tree.Root.Apps) > 0) {
+		err = status.Error(codes.InvalidArgument, "namespace must not have applications or child namespaces")
+		return nil, err
+	}
+	err = m.namespaces.Remove(domain.MakeNamespaceId(req.OrgId, req.Name))
 	if err != nil {
 		log.Println(err)
 		err = status.Error(codes.Internal, err.Error())
