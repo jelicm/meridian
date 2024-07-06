@@ -98,6 +98,16 @@ func (n *resourceQuotaNeo4jStore) getParentEntity(tx neo4j.Transaction, entityId
 }
 
 func (n *resourceQuotaNeo4jStore) GetAvailableResources(tx neo4j.Transaction, entityId string) (domain.ResourceQuotas, error) {
+	if tx == nil {
+		session := startSession(n.driver, n.dbName)
+		defer endSession(session)
+		newTx, err := session.BeginTransaction()
+		if err != nil {
+			return nil, err
+		}
+		tx = newTx
+	}
+
 	quotas := make(map[string]float64)
 	for _, resourceName := range domain.SupportedResourceQuotas {
 		res, err := tx.Run(getAvailableResourcesCypher, map[string]any{

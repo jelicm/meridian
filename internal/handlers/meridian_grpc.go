@@ -7,6 +7,7 @@ import (
 
 	"github.com/c12s/meridian/internal/domain"
 	"github.com/c12s/meridian/pkg/api"
+	oortapi "github.com/c12s/oort/pkg/api"
 	pulsar_api "github.com/c12s/pulsar/model/protobuf"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -14,20 +15,26 @@ import (
 
 type MeridianGrpcHandler struct {
 	api.UnimplementedMeridianServer
-	namespaces domain.NamespaceStore
-	apps       domain.AppStore
-	pulsar     pulsar_api.SeccompServiceClient
+	namespaces    domain.NamespaceStore
+	apps          domain.AppStore
+	resources     domain.ResourceQuotaStore
+	pulsar        pulsar_api.SeccompServiceClient
+	administrator *oortapi.AdministrationAsyncClient
 }
 
-func NewMeridianGrpcHandler(namespaces domain.NamespaceStore, apps domain.AppStore, pulsar pulsar_api.SeccompServiceClient) api.MeridianServer {
+func NewMeridianGrpcHandler(namespaces domain.NamespaceStore, apps domain.AppStore, pulsar pulsar_api.SeccompServiceClient, resources domain.ResourceQuotaStore, administrator *oortapi.AdministrationAsyncClient) api.MeridianServer {
 	return MeridianGrpcHandler{
-		namespaces: namespaces,
-		apps:       apps,
-		pulsar:     pulsar,
+		namespaces:    namespaces,
+		apps:          apps,
+		pulsar:        pulsar,
+		resources:     resources,
+		administrator: administrator,
 	}
 }
 
 func (m MeridianGrpcHandler) AddNamespace(ctx context.Context, req *api.AddNamespaceReq) (*api.AddNamespaceResp, error) {
+	log.Println(req.Labels)
+	log.Println(req.Quotas)
 	namespace, err := m.namespaces.Get(domain.MakeNamespaceId(req.OrgId, req.Name))
 	if err == nil {
 		err = status.Error(codes.AlreadyExists, "namespace already exists")
@@ -64,6 +71,30 @@ func (m MeridianGrpcHandler) AddNamespace(ctx context.Context, req *api.AddNames
 		log.Println(err)
 		err = status.Error(codes.Internal, err.Error())
 		return nil, err
+	}
+	var parentRes *oortapi.Resource
+	if parent == nil {
+		parentRes = &oortapi.Resource{
+			Id:   req.OrgId,
+			Kind: "org",
+		}
+	} else {
+		parentRes = &oortapi.Resource{
+			Id:   parent.GetId(),
+			Kind: "namespace",
+		}
+	}
+	err2 := m.administrator.SendRequest(&oortapi.CreateInheritanceRelReq{
+		From: parentRes,
+		To: &oortapi.Resource{
+			Id:   namespace.GetId(),
+			Kind: "namespace",
+		},
+	}, func(resp *oortapi.AdministrationAsyncResp) {
+		log.Println(resp.Error)
+	})
+	if err2 != nil {
+		log.Println(err2)
 	}
 	return &api.AddNamespaceResp{}, nil
 }
@@ -150,6 +181,26 @@ func (m MeridianGrpcHandler) GetNamespaceHierarchy(ctx context.Context, req *api
 		return nil, err
 	}
 	return m.mapNamespaceTreeNode(ctx, &tree.Root), nil
+}
+
+func (m MeridianGrpcHandler) SetNamespaceResources(ctx context.Context, req *api.SetNamespaceResourcesReq) (*api.SetNamespaceResourcesResp, error) {
+	err := m.resources.SetResourceQuotas(domain.MakeNamespaceId(req.OrgId, req.Name), domain.ResourceQuotas(req.Quotas), nil)
+	if err != nil {
+		log.Println(err)
+		err = status.Error(codes.Internal, err.Error())
+		return nil, err
+	}
+	return &api.SetNamespaceResourcesResp{}, nil
+}
+
+func (m MeridianGrpcHandler) SetAppResources(ctx context.Context, req *api.SetAppResourcesReq) (*api.SetAppResourcesResp, error) {
+	err := m.resources.SetResourceQuotas(domain.MakeAppId(req.OrgId, req.Namespace, req.Name), domain.ResourceQuotas(req.Quotas), nil)
+	if err != nil {
+		log.Println(err)
+		err = status.Error(codes.Internal, err.Error())
+		return nil, err
+	}
+	return &api.SetAppResourcesResp{}, nil
 }
 
 func (m *MeridianGrpcHandler) mapNamespaceTreeNode(ctx context.Context, node *domain.NamespaceTreeNode) *api.GetNamespaceHierarchyResp {

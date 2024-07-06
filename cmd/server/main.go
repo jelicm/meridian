@@ -11,6 +11,7 @@ import (
 	"github.com/c12s/meridian/internal/handlers"
 	"github.com/c12s/meridian/internal/store"
 	"github.com/c12s/meridian/pkg/api"
+	oortapi "github.com/c12s/oort/pkg/api"
 	pulsar_api "github.com/c12s/pulsar/model/protobuf"
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 	"google.golang.org/grpc"
@@ -35,7 +36,11 @@ func main() {
 	}
 	defer conn.Close()
 	pulsar := pulsar_api.NewSeccompServiceClient(conn)
-	meridian := handlers.NewMeridianGrpcHandler(namespaces, apps, pulsar)
+	administrator, err := oortapi.NewAdministrationAsyncClient(os.Getenv("NATS_ADDRESS"))
+	if err != nil {
+		log.Fatalln(err)
+	}
+	meridian := handlers.NewMeridianGrpcHandler(namespaces, apps, pulsar, quotas, administrator)
 
 	s := grpc.NewServer()
 	api.RegisterMeridianServer(s, meridian)

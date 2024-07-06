@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY ./meridian/go.mod ./meridian/go.sum ./
 COPY ./pulsar ../pulsar
+COPY ./oort ../oort
 RUN go mod download
 
 COPY ./meridian/ .

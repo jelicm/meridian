@@ -4,7 +4,7 @@ option go_package = "github.com/c12s/meridian/pkg/api";
 
 package proto;
 
-import "model.proto";
+import "meridian-model.proto";
 
 service Meridian {
   rpc AddNamespace(AddNamespaceReq) returns (AddNamespaceResp) {}
@@ -13,6 +13,8 @@ service Meridian {
   rpc RemoveApp(RemoveAppReq) returns (RemoveAppResp) {}
   rpc GetNamespace(GetNamespaceReq) returns (GetNamespaceResp) {}
   rpc GetNamespaceHierarchy(GetNamespaceHierarchyReq) returns (GetNamespaceHierarchyResp) {}
+  rpc SetNamespaceResources(SetNamespaceResourcesReq) returns (SetNamespaceResourcesResp) {}
+  rpc SetAppResources(SetAppResourcesReq) returns (SetAppResourcesResp) {}
 }
 
 message AddNamespaceReq {
@@ -89,3 +91,20 @@ message GetNamespaceHierarchyResp {
     repeated App apps = 2;
     repeated GetNamespaceHierarchyResp namespaces = 3;
 }
+
+message SetNamespaceResourcesReq {
+    string orgId = 1;
+    string name = 2;
+    map<string, double> quotas = 4;
+}
+
+message SetNamespaceResourcesResp {}
+
+message SetAppResourcesReq {
+    string orgId = 1;
+    string namespace = 2;
+    string name = 3;
+    map<string, double> quotas = 4;
+}
+
+message SetAppResourcesResp {}

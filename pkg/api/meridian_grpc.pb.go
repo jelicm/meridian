@@ -28,6 +28,8 @@ type MeridianClient interface {
 	RemoveApp(ctx context.Context, in *RemoveAppReq, opts ...grpc.CallOption) (*RemoveAppResp, error)
 	GetNamespace(ctx context.Context, in *GetNamespaceReq, opts ...grpc.CallOption) (*GetNamespaceResp, error)
 	GetNamespaceHierarchy(ctx context.Context, in *GetNamespaceHierarchyReq, opts ...grpc.CallOption) (*GetNamespaceHierarchyResp, error)
+	SetNamespaceResources(ctx context.Context, in *SetNamespaceResourcesReq, opts ...grpc.CallOption) (*SetNamespaceResourcesResp, error)
+	SetAppResources(ctx context.Context, in *SetAppResourcesReq, opts ...grpc.CallOption) (*SetAppResourcesResp, error)
 }
 
 type meridianClient struct {
@@ -92,6 +94,24 @@ func (c *meridianClient) GetNamespaceHierarchy(ctx context.Context, in *GetNames
 	return out, nil
 }
 
+func (c *meridianClient) SetNamespaceResources(ctx context.Context, in *SetNamespaceResourcesReq, opts ...grpc.CallOption) (*SetNamespaceResourcesResp, error) {
+	out := new(SetNamespaceResourcesResp)
+	err := c.cc.Invoke(ctx, "/proto.Meridian/SetNamespaceResources", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *meridianClient) SetAppResources(ctx context.Context, in *SetAppResourcesReq, opts ...grpc.CallOption) (*SetAppResourcesResp, error) {
+	out := new(SetAppResourcesResp)
+	err := c.cc.Invoke(ctx, "/proto.Meridian/SetAppResources", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MeridianServer is the server API for Meridian service.
 // All implementations must embed UnimplementedMeridianServer
 // for forward compatibility
@@ -102,6 +122,8 @@ type MeridianServer interface {
 	RemoveApp(context.Context, *RemoveAppReq) (*RemoveAppResp, error)
 	GetNamespace(context.Context, *GetNamespaceReq) (*GetNamespaceResp, error)
 	GetNamespaceHierarchy(context.Context, *GetNamespaceHierarchyReq) (*GetNamespaceHierarchyResp, error)
+	SetNamespaceResources(context.Context, *SetNamespaceResourcesReq) (*SetNamespaceResourcesResp, error)
+	SetAppResources(context.Context, *SetAppResourcesReq) (*SetAppResourcesResp, error)
 	mustEmbedUnimplementedMeridianServer()
 }
 
@@ -126,6 +148,12 @@ func (UnimplementedMeridianServer) GetNamespace(context.Context, *GetNamespaceRe
 }
 func (UnimplementedMeridianServer) GetNamespaceHierarchy(context.Context, *GetNamespaceHierarchyReq) (*GetNamespaceHierarchyResp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetNamespaceHierarchy not implemented")
+}
+func (UnimplementedMeridianServer) SetNamespaceResources(context.Context, *SetNamespaceResourcesReq) (*SetNamespaceResourcesResp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetNamespaceResources not implemented")
+}
+func (UnimplementedMeridianServer) SetAppResources(context.Context, *SetAppResourcesReq) (*SetAppResourcesResp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetAppResources not implemented")
 }
 func (UnimplementedMeridianServer) mustEmbedUnimplementedMeridianServer() {}
 
@@ -248,6 +276,42 @@ func _Meridian_GetNamespaceHierarchy_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Meridian_SetNamespaceResources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetNamespaceResourcesReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MeridianServer).SetNamespaceResources(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.Meridian/SetNamespaceResources",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MeridianServer).SetNamespaceResources(ctx, req.(*SetNamespaceResourcesReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Meridian_SetAppResources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetAppResourcesReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MeridianServer).SetAppResources(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.Meridian/SetAppResources",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MeridianServer).SetAppResources(ctx, req.(*SetAppResourcesReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Meridian_ServiceDesc is the grpc.ServiceDesc for Meridian service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -278,6 +342,14 @@ var Meridian_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetNamespaceHierarchy",
 			Handler:    _Meridian_GetNamespaceHierarchy_Handler,
+		},
+		{
+			MethodName: "SetNamespaceResources",
+			Handler:    _Meridian_SetNamespaceResources_Handler,
+		},
+		{
+			MethodName: "SetAppResources",
+			Handler:    _Meridian_SetAppResources_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
