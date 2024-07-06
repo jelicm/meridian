@@ -29,6 +29,7 @@ type Namespace struct {
 	orgId          string
 	name           string
 	resourceQuotas ResourceQuotas
+	available      ResourceQuotas
 	profileVersion string
 	labels         map[string]string
 }
@@ -40,6 +41,7 @@ func NewNamespace(orgId, name, profileVersion string, labels map[string]string) 
 		profileVersion: profileVersion,
 		labels:         labels,
 		resourceQuotas: make(ResourceQuotas, 0),
+		available:      make(ResourceQuotas, 0),
 	}
 }
 
@@ -63,6 +65,31 @@ func (n *Namespace) AddResourceQuota(resource string, quota float64) error {
 	}
 	n.resourceQuotas[resource] = quota
 	return nil
+}
+
+func (n Namespace) GetAvailable() ResourceQuotas {
+	quotas := make(ResourceQuotas)
+	maps.Copy(quotas, n.available)
+	return quotas
+}
+
+func (n *Namespace) SetAvailable(available ResourceQuotas) error {
+	for resource := range available {
+		if !slices.Contains(SupportedResourceQuotas, resource) {
+			return fmt.Errorf("quotas for a resource with name %s are not supported", resource)
+		}
+	}
+	maps.Copy(n.available, available)
+	return nil
+}
+
+func (n Namespace) GetUtilized() ResourceQuotas {
+	quotas := make(ResourceQuotas)
+	maps.Copy(quotas, n.resourceQuotas)
+	for resource, available := range n.available {
+		quotas[resource] = quotas[resource] - available
+	}
+	return quotas
 }
 
 func (n Namespace) GetProfileVersion() string {

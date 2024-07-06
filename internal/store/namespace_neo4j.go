@@ -76,7 +76,11 @@ func (n *namespaceNeo4jStore) Get(id string) (domain.Namespace, error) {
 		return domain.Namespace{}, err
 	}
 	defer tx.Commit()
-	return n.get(tx, id)
+	namespace, err := n.get(tx, id)
+	if err != nil {
+		return domain.Namespace{}, err
+	}
+	return namespace, nil
 }
 
 func (n *namespaceNeo4jStore) GetHierarchy(rootId string) (domain.NamespaceTree, error) {
@@ -132,7 +136,15 @@ func (n *namespaceNeo4jStore) get(tx neo4j.Transaction, id string) (domain.Names
 		return domain.Namespace{}, err
 	}
 	if len(namespaces) == 0 {
-		return domain.Namespace{}, fmt.Errorf("cannot find parent for namespace %s", id)
+		return domain.Namespace{}, fmt.Errorf("cannot find namespace %s", id)
+	}
+	available, err := n.quotas.GetAvailableResources(tx, namespaces[0].GetId())
+	if err != nil {
+		return domain.Namespace{}, err
+	}
+	err = namespaces[0].SetAvailable(available)
+	if err != nil {
+		return domain.Namespace{}, err
 	}
 	return namespaces[0], nil
 }
@@ -144,7 +156,21 @@ func (n *namespaceNeo4jStore) getChildren(tx neo4j.Transaction, namespace domain
 	if err != nil {
 		return nil, err
 	}
-	return n.readNamespaces(res, namespace.GetId())
+	namespaces, err := n.readNamespaces(res, namespace.GetId())
+	if err != nil {
+		return nil, err
+	}
+	for _, namespace := range namespaces {
+		available, err := n.quotas.GetAvailableResources(tx, namespace.GetId())
+		if err != nil {
+			return nil, err
+		}
+		err = namespace.SetAvailable(available)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return namespaces, nil
 }
 
 func (n *namespaceNeo4jStore) populateTree(tx neo4j.Transaction, node *domain.NamespaceTreeNode) error {

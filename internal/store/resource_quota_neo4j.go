@@ -44,7 +44,7 @@ func (n *resourceQuotaNeo4jStore) SetResourceQuotas(entityId string, quotas doma
 	if err != nil {
 		log.Println(err)
 	} else {
-		availableParent, err := n.getAvailableResources(tx, parentEntityId)
+		availableParent, err := n.GetAvailableResources(tx, parentEntityId)
 		if err != nil {
 			tx.Rollback()
 			return err
@@ -56,7 +56,7 @@ func (n *resourceQuotaNeo4jStore) SetResourceQuotas(entityId string, quotas doma
 		}
 	}
 
-	available, err := n.getAvailableResources(tx, entityId)
+	available, err := n.GetAvailableResources(tx, entityId)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -97,7 +97,7 @@ func (n *resourceQuotaNeo4jStore) getParentEntity(tx neo4j.Transaction, entityId
 	return n.readEntityId(res)
 }
 
-func (n *resourceQuotaNeo4jStore) getAvailableResources(tx neo4j.Transaction, entityId string) (domain.ResourceQuotas, error) {
+func (n *resourceQuotaNeo4jStore) GetAvailableResources(tx neo4j.Transaction, entityId string) (domain.ResourceQuotas, error) {
 	quotas := make(map[string]float64)
 	for _, resourceName := range domain.SupportedResourceQuotas {
 		res, err := tx.Run(getAvailableResourcesCypher, map[string]any{

@@ -133,11 +133,12 @@ func (m MeridianGrpcHandler) GetNamespace(ctx context.Context, req *api.GetNames
 		return nil, err
 	}
 	return &api.GetNamespaceResp{
-		Name:   namespace.GetName(),
-		Labels: namespace.GetLabels(),
-		Total:  namespace.GetResourceQuotas(),
-		// todo: calculate available and utilized
-		Profile: m.getSeccompProfile(ctx, namespace.GetSeccompProfile()),
+		Name:      namespace.GetName(),
+		Labels:    namespace.GetLabels(),
+		Total:     namespace.GetResourceQuotas(),
+		Available: namespace.GetAvailable(),
+		Utilized:  namespace.GetUtilized(),
+		Profile:   m.getSeccompProfile(ctx, namespace.GetSeccompProfile()),
 	}, nil
 }
 
@@ -154,18 +155,18 @@ func (m MeridianGrpcHandler) GetNamespaceHierarchy(ctx context.Context, req *api
 func (m *MeridianGrpcHandler) mapNamespaceTreeNode(ctx context.Context, node *domain.NamespaceTreeNode) *api.GetNamespaceHierarchyResp {
 	resp := &api.GetNamespaceHierarchyResp{
 		Namespace: &api.GetNamespaceHierarchyResp_Namespace{
-			Name:   node.Namespace.GetName(),
-			Labels: node.Namespace.GetLabels(),
-			Total:  node.Namespace.GetResourceQuotas(),
-			// todo: calculate available and utilized
-			Profile: m.getSeccompProfile(ctx, node.Namespace.GetSeccompProfile()),
+			Name:      node.Namespace.GetName(),
+			Labels:    node.Namespace.GetLabels(),
+			Total:     node.Namespace.GetResourceQuotas(),
+			Available: node.Namespace.GetAvailable(),
+			Utilized:  node.Namespace.GetUtilized(),
+			Profile:   m.getSeccompProfile(ctx, node.Namespace.GetSeccompProfile()),
 		},
 	}
 	for _, app := range node.Apps {
 		resp.Apps = append(resp.Apps, &api.GetNamespaceHierarchyResp_App{
-			Name:  app.GetName(),
-			Total: app.GetResourceQuotas(),
-			// todo: calculate available and utilized
+			Name:    app.GetName(),
+			Total:   app.GetResourceQuotas(),
 			Profile: m.getSeccompProfile(ctx, app.GetSeccompProfile()),
 		})
 	}
