@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	gravityapi "github.com/c12s/gravity/pkg/api"
+	magnetarapi "github.com/c12s/magnetar/pkg/api"
 	"github.com/c12s/meridian/internal/handlers"
 	"github.com/c12s/meridian/internal/store"
 	"github.com/c12s/meridian/pkg/api"
@@ -36,11 +38,23 @@ func main() {
 	}
 	defer conn.Close()
 	pulsar := pulsar_api.NewSeccompServiceClient(conn)
+	connGravity, err := grpc.NewClient(os.Getenv("GRAVITY_ADDRESS"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+	gravity := gravityapi.NewAgentQueueClient(connGravity)
 	administrator, err := oortapi.NewAdministrationAsyncClient(os.Getenv("NATS_ADDRESS"))
 	if err != nil {
 		log.Fatalln(err)
 	}
-	meridian := handlers.NewMeridianGrpcHandler(namespaces, apps, pulsar, quotas, administrator)
+	connMagnetar, err := grpc.NewClient(os.Getenv("MAGNETAR_ADDRESS"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+	magnetar := magnetarapi.NewMagnetarClient(connMagnetar)
+	meridian := handlers.NewMeridianGrpcHandler(namespaces, apps, pulsar, quotas, administrator, gravity, magnetar)
 
 	s := grpc.NewServer()
 	api.RegisterMeridianServer(s, meridian)
