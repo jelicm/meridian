@@ -2,15 +2,24 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
+	"math"
+	"math/rand"
 	"strings"
+	"time"
 
+	gravityapi "github.com/c12s/gravity/pkg/api"
+	magnetarapi "github.com/c12s/magnetar/pkg/api"
 	"github.com/c12s/meridian/internal/domain"
 	"github.com/c12s/meridian/pkg/api"
 	oortapi "github.com/c12s/oort/pkg/api"
 	pulsar_api "github.com/c12s/pulsar/model/protobuf"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type MeridianGrpcHandler struct {
@@ -20,21 +29,23 @@ type MeridianGrpcHandler struct {
 	resources     domain.ResourceQuotaStore
 	pulsar        pulsar_api.SeccompServiceClient
 	administrator *oortapi.AdministrationAsyncClient
+	gravity       gravityapi.AgentQueueClient
+	magnetar      magnetarapi.MagnetarClient
 }
 
-func NewMeridianGrpcHandler(namespaces domain.NamespaceStore, apps domain.AppStore, pulsar pulsar_api.SeccompServiceClient, resources domain.ResourceQuotaStore, administrator *oortapi.AdministrationAsyncClient) api.MeridianServer {
+func NewMeridianGrpcHandler(namespaces domain.NamespaceStore, apps domain.AppStore, pulsar pulsar_api.SeccompServiceClient, resources domain.ResourceQuotaStore, administrator *oortapi.AdministrationAsyncClient, gravity gravityapi.AgentQueueClient, magnetar magnetarapi.MagnetarClient) api.MeridianServer {
 	return MeridianGrpcHandler{
 		namespaces:    namespaces,
 		apps:          apps,
 		pulsar:        pulsar,
 		resources:     resources,
 		administrator: administrator,
+		gravity:       gravity,
+		magnetar:      magnetar,
 	}
 }
 
 func (m MeridianGrpcHandler) AddNamespace(ctx context.Context, req *api.AddNamespaceReq) (*api.AddNamespaceResp, error) {
-	log.Println(req.Labels)
-	log.Println(req.Quotas)
 	namespace, err := m.namespaces.Get(domain.MakeNamespaceId(req.OrgId, req.Name))
 	if err == nil {
 		err = status.Error(codes.AlreadyExists, "namespace already exists")
@@ -142,6 +153,36 @@ func (m MeridianGrpcHandler) AddApp(ctx context.Context, req *api.AddAppReq) (*a
 		log.Println(err)
 		err = status.Error(codes.Internal, err.Error())
 		return nil, err
+	}
+	nodes, err := m.placeByGossip(context.Background(), req.OrgId, 50)
+	if err != nil {
+		return nil, err
+	}
+	profile, err := json.MarshalIndent(m.getSeccompProfile(ctx, app.GetSeccompProfile()), "", "\t")
+	if err != nil {
+		return nil, err
+	}
+	cmd := api.ApplyAppConfigCommand{
+		OrgId:          req.OrgId,
+		NamespaceName:  req.Namespace,
+		AppName:        req.Name,
+		SeccompProfile: string(profile),
+		Quotas:         req.Quotas,
+	}
+	cmdMarshalled, err := proto.Marshal(&cmd)
+	if err != nil {
+		return nil, err
+	}
+	for _, node := range nodes {
+		_, err = m.gravity.DisseminateAppConfig(context.Background(), &gravityapi.DeseminateConfigRequest{
+			NodeId: node.Id,
+			Config: cmdMarshalled,
+		})
+		if err != nil {
+			log.Println(err)
+			err = status.Error(codes.Internal, err.Error())
+			return nil, err
+		}
 	}
 	return &api.AddAppResp{}, nil
 }
@@ -338,4 +379,42 @@ func (m *MeridianGrpcHandler) getSeccompProfile(ctx context.Context, metadata do
 		})
 	}
 	return profile
+}
+
+func (m *MeridianGrpcHandler) placeByGossip(ctx context.Context, org string, percentage int32) ([]*magnetarapi.NodeStringified, error) {
+	queryReq := &magnetarapi.ListOrgOwnedNodesReq{
+		Org: string(org),
+	}
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		log.Println("no metadata in ctx when sending req to magnetar")
+	} else {
+		ctx = metadata.NewOutgoingContext(ctx, md)
+	}
+	queryResp, err := m.magnetar.ListOrgOwnedNodes(ctx, queryReq)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("queryResp.Nodes: %+v\n", queryResp.Nodes)
+
+	nodes := selectRandmNodes(queryResp.Nodes, percentage)
+	return nodes, nil
+}
+
+func selectRandmNodes(nodes []*magnetarapi.NodeStringified, percentage int32) []*magnetarapi.NodeStringified {
+	totalNodes := len(nodes)
+	numberOfNodesToSelect := int(math.Ceil(float64(totalNodes) * float64(percentage) / 100))
+
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+
+	selectedNodes := make([]*magnetarapi.NodeStringified, 0)
+
+	for i := 0; i < numberOfNodesToSelect; i++ {
+		index := r.Intn(len(nodes))
+		selectedNodes = append(selectedNodes, nodes[index])
+		nodes = append(nodes[:index], nodes[index+1:]...)
+	}
+
+	return selectedNodes
 }

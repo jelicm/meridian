@@ -14,3 +14,12 @@ message SeccompProfile {
     string defaultAction = 3;
     repeated SyscallRule syscalls = 4;
 }
+
+message ApplyAppConfigCommand {
+  string orgId = 1;
+  string namespaceName = 2;
+  string appName = 3;
+  string seccompProfile = 4;
+  map<string, double> quotas = 5;
+  string strategy = 6;
+}
