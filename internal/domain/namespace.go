@@ -153,4 +153,5 @@ type NamespaceStore interface {
 	Get(id string) (Namespace, error)
 	GetHierarchy(rootId string) (NamespaceTree, error)
 	Remove(id string) error
+	GetParentNamespace(namespaceId string) (*Namespace, error)
 }
