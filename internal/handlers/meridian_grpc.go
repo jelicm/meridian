@@ -50,11 +50,11 @@ func NewMeridianGrpcHandler(namespaces domain.NamespaceStore, apps domain.AppSto
 }
 
 func (m MeridianGrpcHandler) AddNamespace(ctx context.Context, req *api.AddNamespaceReq) (*api.AddNamespaceResp, error) {
-	err := m.authorizer.Authorize(ctx, "org.namespace.add", "org", req.OrgId)
+	/*err := m.authorizer.Authorize(ctx, "org.namespace.add", "org", req.OrgId)
 	if err != nil {
 		log.Printf("AddNamespace authz failed meridian org.namespace.add|org|%s", req.OrgId)
 		return nil, status.Errorf(codes.PermissionDenied, err.Error())
-	}
+	}*/
 
 	namespace, err := m.namespaces.Get(domain.MakeNamespaceId(req.OrgId, req.Name))
 	if err == nil {
@@ -143,15 +143,15 @@ func (m MeridianGrpcHandler) RemoveNamespace(ctx context.Context, req *api.Remov
 // ns.get|namespace|nsId ce proveriti da li je user iz te org i da li ns pripada toj org na osnovu id
 func (m MeridianGrpcHandler) AddApp(ctx context.Context, req *api.AddAppReq) (*api.AddAppResp, error) {
 	nsId := domain.MakeNamespaceId(req.OrgId, req.Namespace)
-	err := m.authorizer.Authorize(ctx, "org.namespace.get", "namespace", nsId)
+	/*err := m.authorizer.Authorize(ctx, "org.namespace.get", "namespace", nsId)
 	if err != nil {
 		return nil, status.Errorf(codes.PermissionDenied, "the namespace is not associated with the organization")
 	}
 
-	err = m.authorizer.Authorize(ctx, "namespace.app.add", "namespace", nsId)
+	err := m.authorizer.Authorize(ctx, "namespace.app.add", "namespace", nsId)
 	if err != nil {
 		return nil, status.Errorf(codes.PermissionDenied, err.Error())
-	}
+	}*/
 
 	namespace, err := m.namespaces.Get(nsId)
 	if err != nil {
@@ -253,48 +253,6 @@ func (m MeridianGrpcHandler) RemoveApp(ctx context.Context, req *api.RemoveAppRe
 	return &api.RemoveAppResp{}, nil
 }
 
-func (m MeridianGrpcHandler) CheckResourcesBeforeMerge(app1, app2 domain.App, dataSpaceResouces float64) (bool, error) {
-	//moving from app1 to app2 dataspace
-	resourceQuotas, err := m.resources.GetAvailableResources(nil, app1.GetId())
-	if err != nil {
-		return false, err
-	}
-	disk, ok := resourceQuotas[domain.SupportedResourceQuotas[2]]
-	if !ok {
-		return false, fmt.Errorf("no disk resources for this app")
-	}
-
-	if disk > dataSpaceResouces {
-		//todo - add resource merge
-		fmt.Println("dataspace merge")
-		return true, nil
-	}
-
-	if app1.GetNamespace().GetId() == app2.GetNamespace().GetId() {
-		//apps are in the same ns
-
-		nsResourceQuotas, err := m.resources.GetAvailableResources(nil, app1.GetNamespace().GetId())
-
-		if err != nil {
-			return false, err
-		}
-
-		nsDisk, ok := nsResourceQuotas[domain.SupportedResourceQuotas[2]]
-		if !ok {
-			return false, fmt.Errorf("no disk resources for this ns")
-		}
-
-		if nsDisk >= dataSpaceResouces {
-			fmt.Println("dataspace merge")
-			return true, nil
-		} else {
-			fmt.Println("ask app1 for resources since it does not need them anymore")
-			return true, nil
-		}
-	}
-
-	return true, nil
-}
 func (m MeridianGrpcHandler) GetNamespace(ctx context.Context, req *api.GetNamespaceReq) (*api.GetNamespaceResp, error) {
 	nsId := domain.MakeNamespaceId(req.OrgId, req.Name)
 	namespace, err := m.namespaces.Get(nsId)
@@ -553,24 +511,35 @@ func selectRandmNodes(nodes []*magnetarapi.NodeStringified, percentage int32) []
 func (m MeridianGrpcHandler) SendMessage(ctx context.Context, req *api.SendMess) (*api.SendMessResp, error) {
 	poruka := req.Poruka
 	return &api.SendMessResp{Odg: poruka}, nil
+	// todo: obrisati
 }
 
 func (m MeridianGrpcHandler) BorrowResources(ctx context.Context, req *api.BorrowResourcesReq) (*api.BorrowResourcesResp, error) {
-	//borrow resources from app1 to app2
+	// borrow resources from app1 to app2
+	// app1 must release all allocated resources.
+	app1Quotas, err := m.resources.GetQuotas(nil, req.App1Id)
+	if err != nil {
+		return nil, err
+	}
+	app1Quotas[domain.SupportedResourceQuotas[2]] = 0
+	err = m.resources.SetResourceQuotas(req.App1Id, app1Quotas, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	resourceQuotas, err := m.resources.GetAvailableResources(nil, req.App2Id)
 	if err != nil {
 		return nil, err
 	}
 	diskApp2, ok := resourceQuotas[domain.SupportedResourceQuotas[2]]
 	if !ok {
-		err = status.Error(codes.InvalidArgument, "no disk resources availabe fot app2")
+		err = status.Error(codes.InvalidArgument, "no disk resources available for app2")
 		return nil, err
 	}
 
 	if diskApp2 >= req.DiskResources {
-		//app2 changes its resources, app1 already did it?
-		//do nothing because app2 already have enough resources
-		return &api.BorrowResourcesResp{Reply: "ds1 merge", Done: true}, nil
+		//do nothing because app2 already has enough resources
+		return &api.BorrowResourcesResp{Reply: "Application 2 already has enough disk resources", Done: true}, nil
 	}
 
 	ns2ResourceQuotas, err := m.resources.GetAvailableResources(nil, req.Namespace2Id)
@@ -581,27 +550,27 @@ func (m MeridianGrpcHandler) BorrowResources(ctx context.Context, req *api.Borro
 
 	ns2Disk, ok := ns2ResourceQuotas[domain.SupportedResourceQuotas[2]]
 	if !ok {
-		err = status.Error(codes.InvalidArgument, "no disk resources availabe fot ns2")
+		err = status.Error(codes.InvalidArgument, "no disk resources available for namespace 2")
 		return nil, err
 	}
 
 	if req.Namespace1Id == req.Namespace2Id {
-		//apps are in the same ns
+		//apps are in the same namespace
 		if ns2Disk >= req.DiskResources {
 			newQuotas, err := m.resources.GetQuotas(nil, req.App2Id)
 			if err != nil {
 				return nil, err
 			}
-			newQuotas[domain.SupportedResourceQuotas[2]] = newQuotas[domain.SupportedResourceQuotas[2]] + req.DiskResources
+			newQuotas[domain.SupportedResourceQuotas[2]] += req.DiskResources
 			err = m.resources.SetResourceQuotas(req.App2Id, newQuotas, nil)
 			if err != nil {
 				return nil, err
 			}
-			return &api.BorrowResourcesResp{Reply: "ds merge", Done: true}, nil
+			return &api.BorrowResourcesResp{Reply: "Merge - apps are in the same namespace", Done: true}, nil
 		} else {
 			//todo - return error?
 			fmt.Println("error app1 did not return resources")
-			return &api.BorrowResourcesResp{Reply: "app1 did not return resources", Done: false}, nil
+			return &api.BorrowResourcesResp{Reply: "there are not enough resources in a namespace", Done: false}, nil
 		}
 	}
 	ns1Parent, err := m.namespaces.GetParentNamespace(req.Namespace1Id)
@@ -615,6 +584,7 @@ func (m MeridianGrpcHandler) BorrowResources(ctx context.Context, req *api.Borro
 	}
 
 	if ns1Parent.GetId() == ns2Parent.GetId() {
+		// namespaces have the same parent
 		if ns2Disk >= req.DiskResources {
 			newQuotas, err := m.resources.GetQuotas(nil, req.App2Id)
 			if err != nil {
@@ -625,7 +595,7 @@ func (m MeridianGrpcHandler) BorrowResources(ctx context.Context, req *api.Borro
 			if err != nil {
 				return nil, err
 			}
-			return &api.BorrowResourcesResp{Reply: "ds merge 2", Done: true}, nil
+			return &api.BorrowResourcesResp{Reply: "Namespaces have the same parent", Done: true}, nil
 		}
 
 		ns1ResourceQuotas, err := m.resources.GetAvailableResources(nil, req.Namespace1Id)
@@ -635,10 +605,12 @@ func (m MeridianGrpcHandler) BorrowResources(ctx context.Context, req *api.Borro
 
 		ns1Disk, ok := ns1ResourceQuotas[domain.SupportedResourceQuotas[2]]
 		if !ok {
-			return &api.BorrowResourcesResp{Reply: "false no disk resources"}, nil
+			err = status.Error(codes.InvalidArgument, "no disk resources available for namespace 1")
+			return nil, err
 		}
 
 		if ns1Disk < req.DiskResources {
+			// todo: error
 			return &api.BorrowResourcesResp{Reply: "app1 did not return resources", Done: false}, nil
 		}
 
@@ -646,7 +618,7 @@ func (m MeridianGrpcHandler) BorrowResources(ctx context.Context, req *api.Borro
 		if err != nil {
 			return nil, err
 		}
-		ns1Quotas[domain.SupportedResourceQuotas[2]] = ns1Quotas[domain.SupportedResourceQuotas[2]] - req.DiskResources
+		ns1Quotas[domain.SupportedResourceQuotas[2]] -= req.DiskResources
 		err = m.resources.SetResourceQuotas(req.Namespace1Id, ns1Quotas, nil)
 		if err != nil {
 			return nil, err
@@ -656,7 +628,7 @@ func (m MeridianGrpcHandler) BorrowResources(ctx context.Context, req *api.Borro
 		if err != nil {
 			return nil, err
 		}
-		ns2Quotas[domain.SupportedResourceQuotas[2]] = ns2Quotas[domain.SupportedResourceQuotas[2]] + req.DiskResources
+		ns2Quotas[domain.SupportedResourceQuotas[2]] += req.DiskResources
 		err = m.resources.SetResourceQuotas(req.Namespace2Id, ns2Quotas, nil)
 		if err != nil {
 			return nil, err
@@ -666,15 +638,15 @@ func (m MeridianGrpcHandler) BorrowResources(ctx context.Context, req *api.Borro
 		if err != nil {
 			return nil, err
 		}
-		app2Quotas[domain.SupportedResourceQuotas[2]] = app2Quotas[domain.SupportedResourceQuotas[2]] + req.DiskResources
+		app2Quotas[domain.SupportedResourceQuotas[2]] += req.DiskResources
 		err = m.resources.SetResourceQuotas(req.App2Id, app2Quotas, nil)
 		if err != nil {
 			return nil, err
 		}
-		return &api.BorrowResourcesResp{Reply: "merge superclaster", Done: true}, nil
+		return &api.BorrowResourcesResp{Reply: "Namespaces have the same parent", Done: true}, nil
 	}
 	//todo - return error?
-	return &api.BorrowResourcesResp{Reply: "not availabe resource borrowing", Done: false}, nil
+	return &api.BorrowResourcesResp{Reply: "Unable to borrow resources", Done: false}, nil
 }
 
 func setOutgoingContext(ctx context.Context) context.Context {
