@@ -27,7 +27,6 @@ const (
 	Meridian_GetNamespaceHierarchy_FullMethodName = "/proto.Meridian/GetNamespaceHierarchy"
 	Meridian_SetNamespaceResources_FullMethodName = "/proto.Meridian/SetNamespaceResources"
 	Meridian_SetAppResources_FullMethodName       = "/proto.Meridian/SetAppResources"
-	Meridian_SendMessage_FullMethodName           = "/proto.Meridian/SendMessage"
 	Meridian_BorrowResources_FullMethodName       = "/proto.Meridian/BorrowResources"
 )
 
@@ -43,7 +42,6 @@ type MeridianClient interface {
 	GetNamespaceHierarchy(ctx context.Context, in *GetNamespaceHierarchyReq, opts ...grpc.CallOption) (*GetNamespaceHierarchyResp, error)
 	SetNamespaceResources(ctx context.Context, in *SetNamespaceResourcesReq, opts ...grpc.CallOption) (*SetNamespaceResourcesResp, error)
 	SetAppResources(ctx context.Context, in *SetAppResourcesReq, opts ...grpc.CallOption) (*SetAppResourcesResp, error)
-	SendMessage(ctx context.Context, in *SendMess, opts ...grpc.CallOption) (*SendMessResp, error)
 	BorrowResources(ctx context.Context, in *BorrowResourcesReq, opts ...grpc.CallOption) (*BorrowResourcesResp, error)
 }
 
@@ -127,15 +125,6 @@ func (c *meridianClient) SetAppResources(ctx context.Context, in *SetAppResource
 	return out, nil
 }
 
-func (c *meridianClient) SendMessage(ctx context.Context, in *SendMess, opts ...grpc.CallOption) (*SendMessResp, error) {
-	out := new(SendMessResp)
-	err := c.cc.Invoke(ctx, Meridian_SendMessage_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *meridianClient) BorrowResources(ctx context.Context, in *BorrowResourcesReq, opts ...grpc.CallOption) (*BorrowResourcesResp, error) {
 	out := new(BorrowResourcesResp)
 	err := c.cc.Invoke(ctx, Meridian_BorrowResources_FullMethodName, in, out, opts...)
@@ -157,7 +146,6 @@ type MeridianServer interface {
 	GetNamespaceHierarchy(context.Context, *GetNamespaceHierarchyReq) (*GetNamespaceHierarchyResp, error)
 	SetNamespaceResources(context.Context, *SetNamespaceResourcesReq) (*SetNamespaceResourcesResp, error)
 	SetAppResources(context.Context, *SetAppResourcesReq) (*SetAppResourcesResp, error)
-	SendMessage(context.Context, *SendMess) (*SendMessResp, error)
 	BorrowResources(context.Context, *BorrowResourcesReq) (*BorrowResourcesResp, error)
 	mustEmbedUnimplementedMeridianServer()
 }
@@ -189,9 +177,6 @@ func (UnimplementedMeridianServer) SetNamespaceResources(context.Context, *SetNa
 }
 func (UnimplementedMeridianServer) SetAppResources(context.Context, *SetAppResourcesReq) (*SetAppResourcesResp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetAppResources not implemented")
-}
-func (UnimplementedMeridianServer) SendMessage(context.Context, *SendMess) (*SendMessResp, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SendMessage not implemented")
 }
 func (UnimplementedMeridianServer) BorrowResources(context.Context, *BorrowResourcesReq) (*BorrowResourcesResp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BorrowResources not implemented")
@@ -353,24 +338,6 @@ func _Meridian_SetAppResources_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Meridian_SendMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SendMess)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MeridianServer).SendMessage(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Meridian_SendMessage_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MeridianServer).SendMessage(ctx, req.(*SendMess))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _Meridian_BorrowResources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(BorrowResourcesReq)
 	if err := dec(in); err != nil {
@@ -427,10 +394,6 @@ var Meridian_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetAppResources",
 			Handler:    _Meridian_SetAppResources_Handler,
-		},
-		{
-			MethodName: "SendMessage",
-			Handler:    _Meridian_SendMessage_Handler,
 		},
 		{
 			MethodName: "BorrowResources",

@@ -50,11 +50,11 @@ func NewMeridianGrpcHandler(namespaces domain.NamespaceStore, apps domain.AppSto
 }
 
 func (m MeridianGrpcHandler) AddNamespace(ctx context.Context, req *api.AddNamespaceReq) (*api.AddNamespaceResp, error) {
-	/*err := m.authorizer.Authorize(ctx, "org.namespace.add", "org", req.OrgId)
+	err := m.authorizer.Authorize(ctx, "org.namespace.add", "org", req.OrgId)
 	if err != nil {
 		log.Printf("AddNamespace authz failed meridian org.namespace.add|org|%s", req.OrgId)
 		return nil, status.Errorf(codes.PermissionDenied, err.Error())
-	}*/
+	}
 
 	namespace, err := m.namespaces.Get(domain.MakeNamespaceId(req.OrgId, req.Name))
 	if err == nil {
@@ -143,15 +143,15 @@ func (m MeridianGrpcHandler) RemoveNamespace(ctx context.Context, req *api.Remov
 // ns.get|namespace|nsId ce proveriti da li je user iz te org i da li ns pripada toj org na osnovu id
 func (m MeridianGrpcHandler) AddApp(ctx context.Context, req *api.AddAppReq) (*api.AddAppResp, error) {
 	nsId := domain.MakeNamespaceId(req.OrgId, req.Namespace)
-	/*err := m.authorizer.Authorize(ctx, "org.namespace.get", "namespace", nsId)
+	err := m.authorizer.Authorize(ctx, "org.namespace.get", "namespace", nsId)
 	if err != nil {
 		return nil, status.Errorf(codes.PermissionDenied, "the namespace is not associated with the organization")
 	}
 
-	err := m.authorizer.Authorize(ctx, "namespace.app.add", "namespace", nsId)
+	err = m.authorizer.Authorize(ctx, "namespace.app.add", "namespace", nsId)
 	if err != nil {
 		return nil, status.Errorf(codes.PermissionDenied, err.Error())
-	}*/
+	}
 
 	namespace, err := m.namespaces.Get(nsId)
 	if err != nil {
@@ -506,12 +506,6 @@ func selectRandmNodes(nodes []*magnetarapi.NodeStringified, percentage int32) []
 	}
 
 	return selectedNodes
-}
-
-func (m MeridianGrpcHandler) SendMessage(ctx context.Context, req *api.SendMess) (*api.SendMessResp, error) {
-	poruka := req.Poruka
-	return &api.SendMessResp{Odg: poruka}, nil
-	// todo: obrisati
 }
 
 func (m MeridianGrpcHandler) BorrowResources(ctx context.Context, req *api.BorrowResourcesReq) (*api.BorrowResourcesResp, error) {
